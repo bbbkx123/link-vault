@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(60)
+  email         String    @unique @db.VarChar(254)
+  username      String    @unique @db.VarChar(32)
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String
+  role          Role      @default(USER)
+  isPublic      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // One user has many links (one-to-many).
+  links Link[]
+
+  // Tags are private to their owner, so the same name can exist for two users.
+  tags Tag[]
+
+  accounts Account[]
+  sessions Session[]
+
+  @@index([role])
+  @@index([isPublic])
+}
+
+model Link {
+  id          String   @id @default(cuid())
+  url         String   @db.VarChar(2048)
+  title       String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // One user has many links (one-to-many).
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // A link has many tags through the LinkTag join model (many-to-many).
+  tags LinkTag[]
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  // One user has many tags (one-to-many).
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // A tag can belong to many links (many-to-many).
+  links LinkTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// Explicit join table: Link <-> Tag is many-to-many.
+model LinkTag {
+  linkId    String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([linkId, tagId])
+  @@index([tagId])
+}
+
+// Required by the Auth.js Prisma adapter. Sessions are JWT-based, but the
+// adapter models keep the database compatible with additional providers.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
